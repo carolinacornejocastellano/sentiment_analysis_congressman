@@ -1,0 +1,401 @@
+---
+title: "Análisis de la cuenta de Alejando Cavero"
+author: "Gissela_Cornejo_Castellano"
+date: "8/2/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Este trabajo analiza los últimos 1000 tweets del congresista Alejando Cavero (@AlejandroCavero) al 09 de febrero de 2022 por la mañana.
+
+```{r Librerías}
+library(rtweet)
+library(tidyverse)
+library(twitteR)
+library(ROAuth)
+library(httr)
+library(tm)
+library(SnowballC)
+library(rio)
+library(wordcloud)
+library(SentimentAnalysis)
+library(syuzhet)
+library(lda)
+library(ggplot2)
+library(RColorBrewer)
+```
+
+# 1. Conseguir la data
+
+## 1.1 API de Twitter y establecer conexión
+
+En aras de no usar repetidas veces mis credenciales, una vez extraída la data la exporté como csv. Por esa razón he colocado los siguientes chunks como comentario y he borrado mis claves.
+```{#r}
+api_key <- ""
+api_secret <- ""
+access_token <- ""
+access_token_secret <- ""
+```
+
+```{#r}
+setup_twitter_oauth(api_key,api_secret,access_token,access_token_secret)
+auth_setup_default()
+```
+
+## 1.2 Extraer tweets
+```{#r}
+Cavero <- get_timeline("@AlejandroCavero", 1000)
+```
+
+```{#r}
+# Cavero2 <- tweets_data(Cavero) --> ya no sirve al 2022-07-28
+head(Cavero2)
+```
+
+## 1.3 Exportar la base de datos a csv para subirlas a Github.
+
+```{#r}
+export(Cavero2,"Cavero_Tweets.csv",row.names = F)
+```
+
+## 1.3 Importar base desde Github, para la reproducibilidad de este Rmd.
+```{r}
+Github <- "https://github.com/gisselacornejocastellano/R_NLP-Cavero/raw/main/Cavero_Tweets.csv"
+
+Cavero_All_Tweets <- import(Github, encoding ="UTF-8")
+```
+
+
+# 2. Preprocesamiento
+```{r}
+max(Cavero_All_Tweets$created_at); min(Cavero_All_Tweets$created_at)
+head(Cavero_All_Tweets$text)
+```
+## ¿Cuántos son retweets?
+
+```{r}
+Es_Retweet <- Cavero_All_Tweets |> 
+  group_by(is_retweet) |> 
+  summarise(Cantidad = n()) |> 
+  ggplot(aes(x = is_retweet, y = Cantidad, fill = is_retweet)) +
+  geom_bar(position = "dodge", stat = 'identity') + 
+  xlab('¿Es retweet?') + 
+  ggtitle("Retweets y tweets propios de A. Cavero") + 
+  theme(legend.position = "none")
+Es_Retweet
+```
+
+```{#r Guardar gráfico para el reporte}
+ggsave("es_retweet.png", Es_Retweet,
+       height = 4, width = 5, units = "in", dpi = 458)
+```
+
+
+## 2.1 Creación de corpus
+```{r}
+Cavero_RT_Deleted <- Cavero_All_Tweets[Cavero_All_Tweets$is_retweet == 'FALSE',]
+
+Cavero_Text <- Cavero_RT_Deleted$text
+```
+
+```{r}
+Corpus <- Corpus(VectorSource(Cavero_Text))
+length(Cavero_Text)
+content(Corpus[1])
+```
+## 2.2 Transformación de texto
+```{r Minúsculas}
+content(Corpus[1])
+Corpus <- tm_map(Corpus,content_transformer(tolower)) 
+content(Corpus[1])
+```
+
+```{r Eliminar links}
+content(Corpus[1])
+Quitar_URL <- function(x) gsub("http[^[:space:]]*", "", x)
+Corpus <- tm_map(Corpus, content_transformer(Quitar_URL))
+content(Corpus[1])
+```
+```{r Eliminar tildes}
+content(Corpus[1])
+Quitar_Tilde <- function(x) chartr('áéíóú','aeiou',x)
+Corpus <- tm_map(Corpus, Quitar_Tilde)
+content(Corpus[1])
+```
+```{r Eliminar signos de pregunta}
+content(Corpus[1])
+Quitar_Interrogacion1 <- function(x) chartr('?',' ',x)
+Quitar_Interrogacion2 <- function(x) chartr('¿',' ',x)
+Corpus <- tm_map(Corpus, Quitar_Interrogacion1)
+Corpus <- tm_map(Corpus, Quitar_Interrogacion2)
+content(Corpus[1])
+```
+```{r Eliminar signos de exclamación}
+content(Corpus[1])
+Quitar_Exclamacion1 <- function(x) chartr('¡',' ',x)
+Quitar_Exclamacion2 <- function(x) chartr('!',' ',x)
+Corpus <- tm_map(Corpus, Quitar_Exclamacion1)
+Corpus <- tm_map(Corpus, Quitar_Exclamacion2)
+content(Corpus[1])
+```
+
+```{r Eliminar handles}
+content(Corpus[91])
+Quitar_Usuarios <- function(x) gsub("@\\w+", "", x)
+Corpus <- tm_map(Corpus, Quitar_Usuarios)
+content(Corpus[91])
+```
+
+```{r Eliminar números}
+content(Corpus[1])
+Corpus <- tm_map(Corpus, removeNumbers)
+content(Corpus[1])
+```
+
+```{r Quitar puntuación}
+content(Corpus[3])
+Corpus <- tm_map(Corpus, removePunctuation)
+content(Corpus[3])
+```
+
+## 2.3 Remover Stopwords
+
+```{r}
+content(Corpus[1])
+Corpus <- tm_map(Corpus, removeWords,c(stopwords("spanish")))
+content(Corpus[1])
+```
+```{r Stopwords específicos}
+content(Corpus[1])
+Corpus <- tm_map(Corpus, removeWords,c("mas", "asi", "ser", "aqui", ""))
+content(Corpus[1])
+```
+
+
+## Remover espacios en blanco excesivos
+```{r}
+content(Corpus[1])
+Corpus <- tm_map(Corpus, stripWhitespace)
+content(Corpus[1])
+```
+# 3 Exploración
+## 3.1 Matrices y palabras frecuentes
+```{r Matriz de términos}
+Terminos <- TermDocumentMatrix(Corpus)
+
+Terminos
+```
+```{r}
+inspect(Terminos)
+```
+```{r Frecuencia de palabras}
+findFreqTerms(Terminos,lowfreq = 10) # al menos 10 veces
+```
+
+```{r Matriz}
+Matriz <- as.matrix(Terminos)
+head(Matriz)
+```
+
+### Ordenar en forma decreciente. Dos de las expresiones más usadas son emoticones que incluyen la bandera del Perú (PE). 
+```{r}
+Decreciente <- sort(rowSums(Matriz),decreasing=TRUE)
+head(Decreciente)
+```
+## 3.2 Crear Data Frame con términos y frecuencias
+
+
+```{r Crear DF}
+Cavero_DF <- data.frame(Palabra = names(Decreciente), freq=Decreciente)
+
+Cavero_DF
+```
+
+## 3.3 Frecuencia de palabras
+
+```{r}
+Cavero_DF2 <- subset(Cavero_DF2, Cavero_DF2$freq >= 10)
+Cavero_DF2
+```
+
+
+```{r}
+hist(Cavero_DF2$freq)
+```
+
+
+```{r Guardar gráfico para el reporte}
+jpeg(file="hist1.jpeg")
+hist(Cavero_DF2$freq)
+dev.off()
+```
+
+
+## 3.4 Gráficos
+```{r}
+ggplot(Cavero_DF2, aes( x = Palabra, y = freq )) +
+  geom_bar(stat = "identity", width = 0.6, fill="steelblue") +
+  xlab("Términos") + 
+  ylab("Frecuencia") + 
+  coord_flip() +
+  theme(axis.text = element_text(size = 9))
+```
+
+```{r}
+barplot(Cavero_DF2[1:20,]$freq, las = 2, names.arg = Cavero_DF2[1:20,]$Palabra,
+        col ="gold", main ="Top 5 palabras más frecuentes",
+        ylab = "Palabras más frecuentes")
+```
+
+
+```{r Guardar barplot de palabras más usadas en el mismo chunk}
+jpeg(file="barplot.jpeg")
+barplot(Cavero_DF2[1:20,]$freq, las = 2, names.arg = Cavero_DF2[1:20,]$Palabra,
+        col ="gold", main ="Top 5 palabras más frecuentes",
+        ylab = "Palabras más frecuentes")
+dev.off()
+```
+
+## 3.5 Wordcloud
+```{r}
+#head(Cavero_DF)
+#Conteo_Palabras <- data.frame(freq = apply(Palabra,1,sum))
+#head(Conteo_Palabras)
+
+wordcloud(Cavero_DF$Palabra, 
+          Cavero_DF$freq, 
+          random.order = FALSE, 
+          min.freq = 2, 
+          colors = brewer.pal(8, "Dark2"))
+```
+
+# 4. Modelamiento
+
+## 4.1 Asociación de palabras
+### Palabras asociadas a "peru", "libertad" y "congreso"
+```{r}
+findAssocs(Terminos, c("peru"), c(0.20))
+```
+
+```{r}
+findAssocs(Terminos, c("libertad"), c(0.30))
+```
+
+```{r}
+findAssocs(Terminos, c("congreso"), c(0.30))
+```
+
+## 4.2 Clúster de textos
+
+```{r}
+Cluster <- removeSparseTerms(Terminos, sparse = 0.96)
+m2 <- as.matrix(Cluster)
+distMatrix <- dist(scale(m2))
+fit <- hclust(distMatrix, method = "ward.D")
+plot(fit)
+rect.hclust(fit, k = 5)
+```
+
+## 4.3 Análisis de sentimientos
+
+### Análisis de sentimientos con el paquete {SentimentAnalysis}:
+```{r}
+Sentimientos_tm <- analyzeSentiment(Cavero_Text,language = "spanish")
+head(Sentimientos_tm)
+```
+
+```{r}
+Sentimientos_tm_df <- data.frame(Cavero_Text,
+                               sentiment = convertToDirection(Sentimientos_tm$SentimentGI))
+Sentimientos_tm_df
+```
+```{r}
+table(Sentimientos_tm_df$sentiment)
+```
+
+#### Plotear los Sentimientos del paquete SentimentAnalysis
+
+```{r}
+Sentimientos_tm_df |> 
+  group_by(sentiment) |>
+  summarise(Cantidad = n() ) |> 
+  ggplot(aes(x = sentiment,y=Cantidad)) +
+  geom_bar(aes(fill=sentiment),stat = "identity") +
+  xlab("Sentimientos") + ylab("Cantidad") + ggtitle("Sentimentos de A. Cavero, según el paquete {SentimentAnalysis}") + 
+  theme(legend.position = "none")
+```
+```{r}
+p2 <- Sentimientos_tm_df |> 
+  mutate(title_len = str_length(Cavero_Text)) |> 
+  ggplot(aes(x = title_len)) +
+  geom_density(fill = "Orange") +
+  theme_minimal() +
+  labs(x = "String Length", title = "Tamaño de los tweets de Cavero")
+p2
+```
+
+```{r Promedio de caracteres de los tweets de Cavero}
+ Sentimientos_tm_df2 <- Sentimientos_tm_df |> 
+  mutate(title_len = str_length(Cavero_Text))
+
+Sentimientos_tm_df2$title_len <- as.numeric(Sentimientos_tm_df2$title_len)
+mean(Sentimientos_tm_df2$title_len) 
+```
+
+
+### Análisis de sentimientos según función get_nrc_sentiment del paquete    
+```{r}
+# Este paquete asocia textos a 8 emociones y 2 sentimientos. Tanto más excede el valor a 0, más pronunciada es la emoción o sentimiento.
+lang <- "spanish"
+Sentimientos_nrc <- get_nrc_sentiment(Cavero_Text, language = lang)
+#Sentimientos_nrc_2 <- cbind(Cavero_Text,Sentimientos_nrc)
+head(Sentimientos_nrc)
+```
+
+### Ver los tweets "angry" de Cavero 
+```{r}
+Cavero_angry <- which(Sentimientos_nrc$anger > 0)
+head(Cavero_Text[Cavero_angry])
+```   
+### Ejemplo de tweets que demuestran "joy"
+```{r}
+Cavero_joy <- which(Sentimientos_nrc$joy > 0)
+head(Cavero_Text[Cavero_joy])
+```
+```{r}
+Cavero_sad <- which(Sentimientos_nrc$sadness > 0)
+head(Cavero_Text[Cavero_sad])
+```
+
+
+#### Plotear sentimientos extraídos por el paquete {syuzhet}
+
+```{r}
+Sentimientos_nrc |> 
+  summarise_all(sum) |> 
+  gather(key = Sentimiento, value = Number)
+```
+
+```{r}
+Sentimientos_nrc |> 
+  summarise_all(sum) |> 
+  gather(key = Sentimiento, value = Number) |> 
+  ggplot(aes(x = Sentimiento,fill = Sentimiento)) + 
+  geom_bar(aes(x = Sentimiento, y = Number), position = "dodge", stat = "identity") +
+  xlab("Sentimientos") + ylab("Cantidad") + ggtitle("Sentimentos de A. Cavero, según paquete {syuzhet}") +
+  theme(legend.position = "none")
+```
+
+## Topic modelling
+```{r}
+require(lda)
+corpusLDA <- lexicalize(Corpus)
+
+ldaModel=lda.collapsed.gibbs.sampler(corpusLDA$documents,K=5,vocab=corpusLDA$vocab,burnin=9999,num.iterations=1000,alpha=0.7,eta=0.1)
+top.words <- top.topic.words(ldaModel$topics, 8, by.score=TRUE)
+print(top.words) 
+```
+
