@@ -20,7 +20,7 @@ library(RColorBrewer)
 
 
 ## -------------------------------------------------------------------------------------------------------------------------------
-Github <- "https://github.com/carolinacornejocastellano/sentiment_analysis_congressman/raw/main/Cavero_Tweets.csv"
+Github <- "https://github.com/castellco/cavero-sentiments/raw/main/Cavero_Tweets.csv"
 
 Cavero_All_Tweets <- import(Github, encoding ="UTF-8")
 
@@ -154,7 +154,7 @@ Cavero_DF
 
 
 ## -------------------------------------------------------------------------------------------------------------------------------
-Cavero_DF2 <- subset(Cavero_DF2, Cavero_DF2$freq >= 10)
+Cavero_DF2 <- subset(Cavero_DF, Cavero_DF$freq >= 10)
 Cavero_DF2
 
 
