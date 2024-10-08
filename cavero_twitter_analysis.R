@@ -3,21 +3,30 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ## ----Librerías------------------------------------------------------------------------------------------------------------------
-library(rtweet)
-library(tidyverse)
-library(twitteR)
-library(ROAuth)
-library(httr)
-library(tm)
-library(SnowballC)
-library(rio)
-library(wordcloud)
-library(SentimentAnalysis)
-library(syuzhet)
-library(lda)
-library(ggplot2)
-library(RColorBrewer)
+libraries <- c(
+  "rtweet",
+  "tidyverse",
+  "twitteR",
+  "ROAuth",
+  "httr",
+  "tm",
+  "SnowballC",
+  "rio",
+  "wordcloud",
+  "syuzhet",
+  "lda",
+  "RColorBrewer"
+)
 
+for (lib in libraries) {
+  if (!requireNamespace(lib, quietly = TRUE)) {
+    install.packages(lib)
+  }
+  suppressPackageStartupMessages(library(lib, character.only = TRUE))
+}
+
+# remove vector and iterator
+rm(lib, libraries)
 
 ## -------------------------------------------------------------------------------------------------------------------------------
 Github <- "https://github.com/castellco/cavero-sentiments/raw/main/Cavero_Tweets.csv"
